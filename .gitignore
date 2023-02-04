@@ -1,2 +1,4 @@
 # 프로젝트 제외 경로
 /udemy_TheCompleteDevelopersGuide/scratch/node_modules/
+/udemy_TheCompleteDevelopersGuide/messages/node_modules/
+/udemy_TheCompleteDevelopersGuide/messages/dist/

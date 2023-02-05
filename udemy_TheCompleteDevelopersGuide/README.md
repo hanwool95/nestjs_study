@@ -1,4 +1,4 @@
-### Section3(CLI 기초 설명)
+## Section3(CLI 기초 설명)
 
 Pipe → Guard → Controller → Service → Repository 기본 모듈 구조를 두고 비즈니스 로직에서 어떤 부분이 필요할지 생각.
 
@@ -12,7 +12,7 @@ nest generate controller [모듈이름]/[컨트롤러이름] —flat(컨트롤�
 
 여기서 추천하는 API Clinets로 [postman.com](http://postman.com) (근데 그냥 Swagger 쓰는 것이 좋아 보인다.)
 
-### Section4(Pipe & Validating)
+## Section4(Pipe & Validating)
 
 nest는 decorator를 이용해서 Request의 정보들을 꺼낼 수 있다.
 
@@ -29,7 +29,7 @@ Dto(Data Transfer Object)를 가지는 request body를 class로 정의하여, �
 
 class-validator: 데코레이터로 유효성 검사 가능하게 만드는 라이브러리.
 
-### Section5(Service & Repository)
+## Section5(Service & Repository)
 
 | Service         | Repository    |
 |-----------------|---------------|
@@ -51,7 +51,8 @@ constructor의 argument로 받아서 의존성 설정을 해주는 것이 좋고
 nest DI Container로 의존성 관리.
 
 - Injectable 데코레이터 사용 + Module에서 Provider 등록
-### Section6(Organizing Code with Modules)
+
+## Section6(Organizing Code with Modules)
 
 모듈 간의 의존 관계를 이해하기 위해 컴퓨터 시스템으로 비유하여 설계하는 실습
 
@@ -86,3 +87,12 @@ Power 모듈 (← CPU 모듈, Disk 모듈)
 1. export할 서비스를 해당 모듈의 exports로 등록하고 (**등록하지 않으면 priavte 즉, 다른 모듈 간의 주입이 불가능함**.)
 2. import 할 서비스가 있는 모듈에서 export하는 모듈을 import한 다음
 3. constructor에 집어 넣는다.
+
+
+## Section7(Project Design)
+
+차 판매 API High level Design하는 실습.
+
+1. Method, Route, Body(or Query String), Description 정리.
+2. 정리한 것을 기반으로 필요한 Module를 구분(Resource 중심으로 하는 듯)한 뒤,
+3. 이에 따라 필요한 Controllers, Services, Repository 파악 및 생성(CLI generate).

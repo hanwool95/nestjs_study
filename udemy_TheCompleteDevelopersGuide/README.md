@@ -31,12 +31,12 @@ class-validator: 데코레이터로 유효성 검사 가능하게 만드는 라�
 
 ### Section5(Service & Repository)
 
-| Service | Repository |
-| --- | --- |
-| 클래스임 | 클래스임 |
-| 비즈니스 로직 | 저장 관련 로직 |
-| 1개 이상 레포지토리를 이용
-→ 데이터 사용 | ORM or Schema |
+| Service         | Repository    |
+|-----------------|---------------|
+| 클래스임            | 클래스임          |
+| 비즈니스 로직         | 저장 관련 로직      |
+| 1개 이상 레포지토리를 이용 |               |
+| → 데이터 사용        | ORM or Schema |
 
 service가 Repository를 이용해서 데이터 사용하고, service의 인스턴스를 Controller에  넘겨주는 로직. 따라서, Controller → Service → Repository 의존성이 생김.
 

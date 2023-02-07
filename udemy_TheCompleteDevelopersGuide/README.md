@@ -96,3 +96,32 @@ Power 모듈 (← CPU 모듈, Disk 모듈)
 1. Method, Route, Body(or Query String), Description 정리.
 2. 정리한 것을 기반으로 필요한 Module를 구분(Resource 중심으로 하는 듯)한 뒤,
 3. 이에 따라 필요한 Controllers, Services, Repository 파악 및 생성(CLI generate).
+
+
+## Section8(Type ORM)
+
+TypeORM: SQLite(강의자는 이걸 시퀄라이트라고 발음한다…. ㄷㄷ. 선 넘네.) , Postgres, MySQL, MongoDB 다룰 수 있는 nest ORM 라이브러리
+
+Repository를 만들 필요 없이, 엔티티 만들어서 연결.
+
+AppModule에 imports하는 것으로 자동으로 연결된 모듈과 연결.
+
+TypeORM의 엔티티 만드는 방식
+
+1. 엔티티 파일 제작하고 class 안에 properties 목록 추가.
+- Entity, Column, PrimaryGenerateColumn 데코레이터 import하여 제작.
+2. 엔티티를 부모 모듈과 연결(이걸로 레포지토리가 생성됨)
+3. 엔티티를 Root(app module)와 연결
+- forRoot의 entities 안에 등록하는 것으로 연결.
+
+보통 ORM은 Migration을 작성하여 데이터베이스 구조를 변경.
+
+그런데 TypeORM은 synchronize 옵션을 true로 주는 것으로 데코레이터 기준으로 추가된 구조 확인하고 그냥 변경해줌 ㄷㄷ.(그런데 반대로 지우는 것도 그냥 묻지도 않고 데이터 깨끗이 지워버리니, production에서는 synchronize 사용하지 말라고 함)
+
+Type ORM doc
+
+[https://typeorm.io/repository-api](https://typeorm.io/repository-api)
+
+대표: create, save, find, findOne, remove
+
+Dto에 적용한 prop 이외의 정보가 body에 있으면 알아서 걸러준다고 한다.

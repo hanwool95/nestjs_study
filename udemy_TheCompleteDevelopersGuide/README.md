@@ -285,3 +285,98 @@ export class UsersController {
     }
 }
 ```
+
+
+## Section10(Custom Data Serialization)
+
+Class Serializer Interceptor
+
+- Interceptor? Request 들어오는 것 처리, 혹은 내보내기 전 처리 해주는 것.
+- Service로부터 가져온 Entity Instance를 정해진 규칙(Dto에서 데코레이터로 설정 가능)에 따라 object 제작.
+- Controller에서 Decorator를 사용하여 Intercepting 가능, 각 route에도 설정 가능, global하게 설정도 가능.
+- `UseInterceptors`, `ClassSerializerInterceptor`
+- DTO로 Serializer Rule 정하기 가능.
+
+```tsx
+// interceptors/serialize.interceptor.ts
+
+import { NestInterceptor, ExecutionContext, CallHandler } from "@nestjs/common";
+import { Observable } from "rxjs";
+import { map } from "rxjs/operators";
+
+export class SerializeInterceptor implements NestInterceptor {
+    intercept(context: ExecutionContext, next: CallHandler<any>): Observable<any> | Promise<Observable<any>> {
+        // Run something before a request is handled by the request handler
+        console.log('Im running before the handler', context);
+
+        return next.handle().pipe(
+            map((data: any)=> {
+                // Run something before the response is sent out
+                console.log('Im running before response is sent out', data)
+            })
+        )
+    }
+}
+```
+
+implements: extend와 다르고 interface처럼 쓰여서, 타입 확인하게 만들어줌(intercept 등 필요 method 있는지 확인 등).
+
+intercept method의 파라미터
+
+- context: reqpuest 정보
+- next: controller의 request handler, 즉 route handler 그 자체.
+
+next.handle() 이전에, 데코레이터로 감싼 handler가 실행하기 전에 context 가지고 처리를 할 수 있음. pipe 함수를 사용하여, handler 실행 이후의 data 처리 가능.
+
+```tsx
+// interceptors/serialize.interceptor.ts
+
+import { UseInterceptors, NestInterceptor, ExecutionContext, CallHandler } from "@nestjs/common";
+import { Observable } from "rxjs";
+import { map } from "rxjs/operators";
+import { plainToClass } from "class-transformer";
+
+// any class
+interface ClassConstructor {
+    new (...args: any[]): {}
+}
+
+export function Serialize(dto: ClassConstructor) {
+    return UseInterceptors(new SerializeInterceptor(dto))
+}
+
+export class SerializeInterceptor implements NestInterceptor {
+    constructor(private dto: ClassConstructor) {
+    }
+
+    intercept(context: ExecutionContext, next: CallHandler<any>): Observable<any> | Promise<Observable<any>> {
+        return next.handle().pipe(
+            map((data: ClassConstructor)=> {
+                return plainToClass(this.dto, data, {
+                    excludeExtraneousValues: true,
+                });
+            }),
+        );
+    }
+}
+```
+
+```tsx
+// users.controller.ts
+
+.....
+
+import { Serialize } from "../interceptors/serialize.interceptor";
+import { UserDto } from "./dtos/user.dto";
+
+@Controller('auth')
+@Serialize(UserDto)
+export class UsersController {
+    constructor(private userService: UsersService) {}
+.....
+}
+```
+
+UseInterceptors를 데코레이터로 직접 컨트롤러에 생성해서 원하는 dto 넣을 수 있지만, 그렇게 하지 않고, 자체적으로 Serialize 데코레이터를 제작할 수 있음.
+
+Interceptor에서 constructor로 data를 받아서 추상화 가능.

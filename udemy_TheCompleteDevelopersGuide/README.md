@@ -380,3 +380,286 @@ export class UsersController {
 UseInterceptors를 데코레이터로 직접 컨트롤러에 생성해서 원하는 dto 넣을 수 있지만, 그렇게 하지 않고, 자체적으로 Serialize 데코레이터를 제작할 수 있음.
 
 Interceptor에서 constructor로 data를 받아서 추상화 가능.
+
+## Section11(Authentication From Scratch)
+
+### Hash
+
+회원가입 로직: POST로 데이터 전송(Client) → 이메일 확인과 비밀번호 복호화, 인증 되면 쿠키 전송(Server) → 브라우저에 쿠키 저장(Client) → 쿠키 인증(Server)
+
+Users Service에 의존하는 Auth Service를 새로 제작.
+
+- 작은 서비스에서는 Users Service 안에 다 구현해도 괜찮지만, 서비스 안에 기능들을 무작정 확장만 시키는 것은 프로젝트 규모가 커질 수록 집중도가 떨어짐.
+
+```tsx
+export class AuthService {
+    constructor(private userService: UsersService) {}
+```
+
+repository가 아닌 의존하는 Service를 constructor에서 가져와서 사용.
+
+잠깐! 비밀번호를 해싱한다는 것이란?
+
+1. 당연하지만 비밀번호를 그대로 db에 저장하는 것은 좋지 않다.
+2. Hashing Function은 값을 특정 계산에 의해 전혀 다른 값으로 만드는 것으로, input 값의 일부만 변경되더라도 output은 전혀 다른 결과가 됨.
+3. output 값을 가지고 원본 값을 유추하기 위한 backward 계산이 불가능함.
+4. 추후 사용자가 비밀번호를 입력하면, 그 비밀번호의 Hashing Function 결과 값을 db에 저장된 값과 비교하여 인증.
+5. 단순히 HashingFunction만 사용하는 것은 rainbow table(자주 입력하는 특정 비밀번호들 목록) attack으로 공격 받을 수 있음.
+6. 랜덤하게 만들어진 stringdls Salt를 추가하는 것으로 유추를 불가능하게 만들 수 있음.(조금만 바뀌어도 해시가 완전 바뀐다는 특성을 활용)
+
+crypto 라이브러리의 randomBytes로 salt 제작, scrypt로 해싱 가능.
+
+```tsx
+import { randomBytes, scrypt as _scrypt } from "crypto";
+import { promisify } from "util";
+
+const scrypt = promisify(_scrypt)
+```
+
+scrypt는 callback을 사용하는데, 강의자님의 주장으로는 콜백을 다루는 것은 자바스크립트 개발자 모두가 싫어하기에(좀 그렇긴 하지….. ㅋㅋㅋㅋㅋ) promisify를 사용하여 단순화 시킨다 함.
+
+`const hash = await scrypt(password, salt, 32);`
+
+scrypt의 세 번째 파라미터는 string 갯수 결정.
+
+```tsx
+//users.controller.ts
+
+.....
+
+@Post('/signup')
+    createUser(@Body() body: CreateUserDto) {
+        return this.authService.signUp(body.email, body.password)
+    }
+
+    @Post('/signin')
+    signIn(@Body() body: CreateUserDto) {
+        return this.authService.signIn(body.email, body.password)
+    }
+
+.....
+```
+
+```tsx
+//auth.service.ts
+
+import {BadRequestException, Injectable, NotFoundException} from "@nestjs/common";
+import { UsersService } from "./users.service";
+import { randomBytes, scrypt as _scrypt } from "crypto";
+import { promisify } from "util";
+
+const scrypt = promisify(_scrypt)
+
+@Injectable()
+export class AuthService {
+    constructor(private userService: UsersService) {}
+
+    async signUp(email: string, password: string) {
+        // See if email is in use
+        const users = await this.userService.find(email);
+        if (users.length) {
+            throw new BadRequestException('email in use')
+        }
+        // hash the users password
+        // Generate a salt
+        const salt = randomBytes(8).toString('hex');
+
+        // Hash the salt and the password together
+        const hash = (await scrypt(password, salt, 32)) as Buffer;
+
+        // Join the hashed result and the salt together
+        const result = salt + '.' + hash.toString('hex')
+
+        // Create a new user and save it
+        const user = await this.userService.create(email, result);
+
+        // return the user
+        return user;
+    }
+
+    async signIn(email: string, password: string) {
+        const [user] = await this.userService.find(email);
+        if (!user) {
+            throw new NotFoundException('user not found')
+        }
+
+        const [salt, storedHash] = user.password.split('.')
+
+        const hash = (await scrypt(password, salt, 32)) as Buffer;
+
+        if (storedHash !== hash.toString('hex')){
+            throw new BadRequestException('bad password');
+        }
+
+        return user;
+    }
+}
+```
+
+### Coockie and Session
+
+쿠키와 세션?
+
+1. 쿠키는 무작위로 나열된 string value를 가짐
+2. 서버는 쿠키를 받아서 디코딩하여 object를 만들어 세션에 저장
+3. 클라이언트의 요청에 따라 서버는 세션 object 값을 바꿈
+4. 서버는 세션 object를 암호화하고 쿠키를 만들고 클라이언트에게 전송.
+
+`const cookieSession = require('cookie-session');`
+
+- nest와 쿠키 세션 사이의 문제로 require를 써야만 한다는 문제가 있다고 함.
+
+```tsx
+app.use(cookieSession({
+    keys: ['asfasfdasdf']
+}))
+```
+
+main.ts의 bootstrap 안에 cookieSession을 넣어서 세션 전역에서 사용 가능. keys의 value는 해싱 기준 값.
+
+```tsx
+@Post('/signup')
+    async createUser(@Body() body: CreateUserDto, @Session() session: any) {
+        const user = await this.authService.signUp(body.email, body.password)
+        session.userId = user.id
+        return user;
+    }
+```
+
+회원가입이나 로그인 할 때 session에 userId를 기록하여서
+
+```tsx
+@Get('/whoami')
+    whoAmI(@Session() session: any) {
+        return this.userService.findOne(session.userId);
+    }
+```
+
+로그인정보를 불러올 때 session에 있는 userId 기준으로 불러올 수 있음. 없으면 undefined 처리.
+
+```tsx
+@Post('/signout')
+    signOut(@Session() session: any) {
+        session.userId = null;
+    }
+```
+
+로그아웃은 세션의 userId를 빈값으로
+
+### Interceptor & Decorator
+
+```tsx
+// current-user.decorator.ts
+
+import {createParamDecorator, ExecutionContext} from "@nestjs/common";
+
+export const CurrentUser = createParamDecorator(
+    (data: never, context: ExecutionContext) => {
+        const request = context.switchToHttp().getRequest();
+        return request.session.userId
+    }
+)
+```
+
+현 사용자가 누구인지 알려주는 Interceptor와 Decorator 제작 가능.
+
+createParamDecorator에서의 반환 값은 데코레이터를 감싼 파라미터의 argument가 됨
+
+data는 데코레이터에서 받는 파라미터 값. 로그인 확인 데코레이터는 값을 받지 않으니 never처리.
+
+context의 타입으로 Request를 사용한다면 http만 적용되겠지만, ExecutionContext는 다른 여러 프로토콜에도 대응이 가능하다고 함.
+
+### ⚠️  데코레이터 단독으로는 안되는 이유!
+
+데코레이터 안에서는 Session에 접근하여 사용자 Id 값까지 가져오는 것은 가능. 문제는 UserService의 인스턴스를 가져와서 작업을 진행해야 할 때임.
+
+Service는 Dependency system으로, 현재 UserService는 userRepository를 사용하고, 오직 Dependency injection으로 사용이 가능. Decoratior는 Dependency injection으로 사용할 수 없음. (즉, Decorator가 Service 자원을 이용할 수 없는 것.)
+
+```tsx
+// current-user.interceptor.ts
+
+import {CallHandler, ExecutionContext, Injectable, NestInterceptor} from "@nestjs/common";
+import {UsersService} from "../users.service";
+
+@Injectable()
+export class CurrentUserInterceptor implements NestInterceptor {
+    constructor(private userService: UsersService) {}
+
+    async intercept(context: ExecutionContext, handler: CallHandler){
+        const request = context.switchToHttp().getRequest()
+        const { userId } = request.session || {};
+
+        if (userId) {
+            request.currentUser = await this.userService.findOne(userId);
+        }
+
+        return handler.handle();
+    }
+}
+```
+
+```tsx
+// current-user.decorator.ts
+
+import {createParamDecorator, ExecutionContext} from "@nestjs/common";
+
+export const CurrentUser = createParamDecorator(
+    (data: never, context: ExecutionContext) => {
+        const request = context.switchToHttp().getRequest();
+        return request.currentUser;
+    }
+)
+```
+
+따라서 interceptor를 만들어서 Session으로부터 current user를 가져오고, UserService의 인스턴스를 받아온 뒤, 그 자원을 데코레이터가 이용하도록 설정해야 함. (인터셉터가 먼저 실행되어 request에 currentUser를 할당하고, 데코레이터가 실행될 때 할당 된 currentUser 활용 가능.)
+
+globally하게 해당 모듈 모든 controller에 inteceptor 할당하는 방법.
+
+**`APP_INTERCEPTOR` **활용**
+
+```tsx
+@Module({
+  imports: [TypeOrmModule.forFeature([User])],
+  controllers: [UsersController],
+  providers: [UsersService, AuthService, {
+    provide: APP_INTERCEPTOR,
+    useClass: CurrentUserInterceptor}]
+})
+export class UsersModule {}
+```
+
+### Guard
+
+```tsx
+// auth.guard.ts
+
+import {
+    CanActivate,
+    ExecutionContext
+} from "@nestjs/common";
+
+export class AuthGuard implements CanActivate {
+    canActivate(context: ExecutionContext) {
+        const request = context.switchToHttp().getRequest();
+        return request.session.userId;
+    }
+}
+```
+
+```tsx
+// users.controller.ts
+
+.....
+
+@Get('/whoami')
+@UseGuards(AuthGuard)
+whoAmI(@CurrentUser() user: User) {
+        return user;
+    }
+
+.....
+```
+
+인가 되지 않는 사용자를 앞단에서 막음.
+
+UseGuards 데코레이터 안에 값으로 직접 만든 AuthGuard(아스가르드 ㄷㄷ) 넣고, canActivate 안에서 반환하는 값이 undefined 되어 있는지 여부로 판단. (없으면 403)

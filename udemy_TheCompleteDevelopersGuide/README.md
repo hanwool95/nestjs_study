@@ -663,3 +663,238 @@ whoAmI(@CurrentUser() user: User) {
 인가 되지 않는 사용자를 앞단에서 막음.
 
 UseGuards 데코레이터 안에 값으로 직접 만든 AuthGuard(아스가르드 ㄷㄷ) 넣고, canActivate 안에서 반환하는 값이 undefined 되어 있는지 여부로 판단. (없으면 403)
+
+## Section12(Unit Testing)
+
+- unit testing: 각 method와 class가 잘 작동 되는지 확인
+- Integration testing: Feature의 전체 흐름을 테스트 (end to end testing)
+
+nest.js에는 test directory가 있음. `app.e2e-sspec.ts`가 integration test를 위한 것.
+
+unit test는 src안에 있음. 각 `spec` 파일.
+
+```tsx
+// auth.service.spec.ts
+
+import { Test } from "@nestjs/testing";
+import { AuthService } from "./auth.service";
+import { UsersService } from "./users.service";
+
+it('can create an instance of auth service', async () => {
+    const module = await Test.createTestingModule({
+        providers: [AuthService]
+    }).compile();
+
+    const service = module.get(AuthService)
+
+    expect(service).toBeDefined();
+});
+```
+
+임시로 Di 컨테이너 제작.
+
+하지만 아직 AuthService에 Dependency를 걸지 않았기에 에러가 걸리는 상황. `npm run test:watch`
+
+```tsx
+
+it('can create an instance of auth service', async () => {
+        // Create a fake copy of the users service
+    const fakeUsersService = {
+        find: () => Promise.resolve([]),
+        create: (email: string, password: string) => Promise.resolve({ id: 1, email, password })
+    }
+
+    const module = await Test.createTestingModule({
+        providers: [AuthService,
+            {
+                provide: UsersService,
+                useValue: fakeUsersService
+            }]
+    }).compile();
+
+    const service = module.get(AuthService)
+
+    expect(service).toBeDefined();
+});
+```
+
+따라서 임시로 Service 객체를 만들어서 테스트 코드 작성.
+
+```tsx
+providers: [AuthService,
+            {
+                provide: UsersService,
+                useValue: fakeUsersService
+            }]
+```
+
+providers에 사용할 서비스를 넣는 것으로 넣는 것으로 DI container는 만들어야 하는 객체를 알 수 있음.
+
+{} 안에 넣은 것은 DI를 re-route한 것. UsersService를 원할 때 fakeUserService를 사용하라고 알려주는 것. (so, AuthService를 가져올 때 의존 걸려있는 UserService를 가져오는데, 이 때 fakeUserService를 가져오는 것. UserService에서 실행하는 find()와 create()이 fake find()와 create()으로 실행 됨.)
+
+```tsx
+const fakeUsersService = {
+        find: () => Promise.resolve([]),
+        create: (email: string, password: string) => Promise.resolve({ id: 1, email, password })
+    }
+```
+
+`Promise.resolve` 로 프로미스를 만들고 바로 resolve하여 value를 만듦.(const arr = await fakeUsersServic.find())
+
+```tsx
+const fakeUsersService: Partial<UsersService> = {
+        find: () => Promise.resolve([]),
+        create: (email: string, password: string) => Promise.resolve({ id: 1, email, password } as User)
+    }
+```
+
+이때  find와 create의 type 지정을 보장하기 위해 typescript를 활용하여 오리지날을 타입 지정.
+
+package.json의 scripts 부분에서
+
+`"test: watch": "jest --watch",`를 `"test:watch": "jest --watch --maxWorkers=1",`로 바꾸면 속도가 빨라진다고 한다.??
+
+```tsx
+let service: AuthService;
+
+beforeEach(async () => {
+    // Create a fake copy of the users service
+    const fakeUsersService: Partial<UsersService> = {
+        find: () => Promise.resolve([]),
+        create: (email: string, password: string) => Promise.resolve({ id: 1, email, password } as User)
+    }
+
+    const module = await Test.createTestingModule({
+        providers: [AuthService,
+            {
+                provide: UsersService,
+                useValue: fakeUsersService
+            },
+        ],
+    }).compile();
+
+	service = module.get(AuthService)
+})
+```
+
+beforeEach 사용하여 이 파일에 실행되는 각 테스트 전에 실행할 것을 정의.
+
+이것으로 fakeUserService와 모듈을 컴파일하여 새로운 서비스를 갖는 것으로 시작 가능.
+
+beforeEach 안에 있는 service는 it 과 다른 스코프에 있기에, let으로 스코프 바깥에서 정의.
+
+```tsx
+describe('AuthService',  () => {
+    let service: AuthService;
+
+.....
+
+        expect(service).toBeDefined();
+    });
+});
+```
+
+describe로 전체 테스트 과정을 감싸주는 것으로, 테스트 정리를 쉽게 하도록 만들어줌.(어떤 테스트인지 테스트 환경에서 잘 구별하도록 설명해주는 함수.)
+
+```tsx
+it('creates a new user with a salted and hashed password', async ()=>{
+      const user = await service.signUp('asdf@asdf.com', 'asdf');
+
+      expect(user.password).not.toEqual('asdf');
+      const [salt, hash] = user.password.split('.');
+      expect(salt).toBeDefined();
+      expect(hash).toBeDefined();
+    })
+```
+
+이제 비밀번호가 잘 hash와 salt 되었는지 확인하는 작업 제작.
+
+임의의 이메일과 비밀번호를 준 뒤, 비밀번호가 원본과 같은지 확인 후, 각 salt와 hash가 존재하는지 확인.
+
+```tsx
+it('throws an error if user signs up with email that is in use', async ()=> {
+        fakeUsersService.find = () => Promise.resolve([{ id: 1, email: 'a', password: '1'} as User])
+        await expect(service.signUp('asdf@asdf.com', 'asdf')).rejects.toThrow(
+            BadRequestException,
+        );
+    });
+```
+
+이제 이미 등록한 이메일 다시 등록했을 경우, 에러가 잘 발생되는지 테스트.
+
+fakeUsersService의 find를 재정의 해서 무조건 결과값이 나오도록 만듦. 따라서, signUp 과정에서 find 했을 때 BadRequestException이 나오도록 설정을 했기에, 에러가 잘 발생하면 테스트 통과되도록 `rejects.toThrow()`로 설정.
+
+```tsx
+it('throws if signin is called with an unused email', async () => {
+        await expect(
+            service.signIn('asdflkj@asdflfkj.com', 'passdflkj'),
+        ).rejects.toThrow(NotFoundException)
+    })
+```
+
+로그인시 존재하지 않은 이메일 사용했을 때 404가 잘 뜨는지 테스트.
+
+service의 find()는 현재 빈 배열을 반환하도록 설정했기에, 아무 이메일이나 적어서 회원가입 시도. `rejects.toThrow()`안에 NotFoundException 넣어서 설정.
+
+```tsx
+it('throws if an invalid password is provided', async () => {
+        fakeUsersService.find = () => Promise.resolve([
+            { email: 'asdf@asdf.com', password: 'laskdjf' } as User,
+        ]);
+        await expect(
+            service.signIn('laskdjf@alskdfj.com', 'password'),
+        ).rejects.toThrow(BadRequestException)
+    })
+```
+
+비밀번호 일치하지 않을 때 BadRequestException 뜨는지 테스트. service의 find 함수를 다시 정의해서, 임의의 이메일과 비밀번호를 가져오도록 만들고, 비밀번호를 일치하지 않게 했을 때 BadRequestException 나오는지 확인.
+
+```tsx
+const users: User[] = [];
+fakeUsersService = {
+    find: (email: string) => {
+        const filteredUsers =users.filter(user => user.email === email)
+        return Promise.resolve(filteredUsers);
+    },
+    create: (email: string, password: string) => {
+        const user = { id: Math.floor(Math.random() * 99999), email, password } as User
+        users.push(user);
+        return Promise.resolve(user);
+    }
+
+....
+
+it('returns a user if correct password is provicded', async () => {
+        await service.signUp('asdf@asdf.com', 'mypassword')
+        const user = await service.signIn('asdf@asdf.com', 'mypassword');
+        expect(user).toBeDefined()
+    })
+```
+
+비밀번호 일치 여부를 확인하기 위해서는 실제 salt hash된 비밀번호를 제공해야 함.
+
+2가지 방법.
+
+첫 번째는 간단하게, 실제로 회원가입하고 salt hash된 결과를 집어 넣어서 테스트 하는 방법. 하지만 당연히 좋지 않은 방법.
+
+두 번째는 실제 회원가입 해서 메모리에 저장하고, 회원가입을 하는 방법. 이것을 위해서는 FakeUserService가 실제로 메모리 상에서 동작하도록 변경해야 함.
+
+```tsx
+it('throws an error if user signs up with email that is in use', async ()=> {
+        await service.signUp('asdf@asdf.com', 'asdf')
+        await expect(service.signUp('asdf@asdf.com', 'asdf')).rejects.toThrow(
+            BadRequestException,
+        );
+    });
+
+.....
+
+it('throws if an invalid password is provided', async () => {
+    await service.signUp('laskdjf@alskdfj.com', 'password');
+    await expect(
+        service.signIn('laskdjf@alskdfj.com', 'laksdlfkj'),
+    ).rejects.toThrow(BadRequestException)
+})
+```
+
+service가 메모리 상에서 동작하게 되었기에, find로 임의의 데이터를 정의하지 않고, 직접 실제 서비스 플로우 대로 구현하여 테스트 가능

@@ -898,3 +898,180 @@ it('throws if an invalid password is provided', async () => {
 ```
 
 service가 메모리 상에서 동작하게 되었기에, find로 임의의 데이터를 정의하지 않고, 직접 실제 서비스 플로우 대로 구현하여 테스트 가능
+
+Controller test는?
+
+```tsx
+fakeUserService = {
+      findOne: (id: number) => {
+        return Promise.resolve({ id, email: 'asdf@asdf.com', password: 'asdfjkl;'} as User)
+      },
+      find: (email: string) => {
+        return Promise.resolve([ { id: 1, email, password: 'asdfjkl;'} as User])
+      }
+  };
+fakeAuthService = {
+			signIn: (email: string, password: string) => {
+	        return Promise.resolve({ id: 1, email, password} as User)
+	      }
+}
+```
+
+```tsx
+const module: TestingModule = await Test.createTestingModule({
+      controllers: [UsersController],
+      providers: [
+        {
+          provide: UsersService,
+          useValue: fakeUserService
+        },
+        {
+          provide: AuthService,
+          useValue: fakeAuthService
+        }
+      ]
+    }).compile();
+```
+
+controller test도 마찬가지로 종속된 fake 서비스를 만들고 useValue로 redirect.
+
+```tsx
+it('findAllUser returns a list of users with the given email', async () => {
+    const users = await controller.findAllUsers('asdf@asdf.com')
+    expect(users.length).toEqual(1);
+    expect(users[0].email).toEqual('asdf@asdf.com')
+  })
+
+it('findUser returns a single user with the given id', async () => {
+  const user = await controller.findUser('1');
+  expect(user).toBeDefined();
+})
+
+it('findUser throws an error if user with given id is not found',
+    async () => {
+  fakeUserService.findOne = () => null;
+  await expect(controller.findUser('1')).rejects.toThrow(NotFoundException)
+    })
+
+it('signin updates session object and returns user', async () => {
+  const session = { userId: -10 };
+  const user = await controller.signIn({ email: 'asdf2asdf.com', password: 'asdf'},
+      session)
+
+  expect(user.id).toEqual(1);
+  expect(session.userId).toEqual(1)
+})
+```
+
+기능 하나씩 코드 작성.
+
+근데 이렇게 보니 확실히 테스트 코드가 기능 명세서 같다는 것이 느껴진다.
+
+## Section13(Integration Testing)
+
+Integration Testing?
+
+- end to end test!
+- nest에서는 test/app.e2e-spec.ts 에 정의되어 있음.
+- single method 보다는, entire instance가 잘 작동되는지를 확인하는 것!
+- command: npm run `test:e2e`
+
+실습은 `auth.e2e-spec.ts` 파일을 만들어 Sign up, Sign in 테스트!
+
+```tsx
+it('handles a signup request', () => {
+        const email = 'asdfkj232q@afdfdfd.com'
+        return request(app.getHttpServer())
+            .post('/auth/signup')
+            .send({ email, password: 'asdf'})
+            .expect(201)
+            .then((res) => {
+                const { id, email: resEmail } = res.body;
+                expect(id).toBeDefined()
+                expect(resEmail).toEqual(email)
+            })
+    });
+```
+
+chain으로 상황 설정과 기대값 설정.
+
+method로 path 적고, send로 body 값 설정 가능.
+
+기대하는 response code 설정 가능.
+
+then으로 response 값 검증 가능.
+
+하지만 그냥 이렇게 하면 failed 뜸 왜?
+
+cannot set property ‘userId’ of undefined
+
+test 중에는 main.ts 파일이 실행되지 않아 cookie-session 과 validation Pipe 생성이 skip 됨.
+
+user Session Object에 userId를 할당하려고 했기에 에러가 뜬 것.
+
+그럼 해결책?
+
+1. 쉬운 방법(정말 별로인 방법이라고 강조함): main.ts에 실행되는 쿠키와 pipe 부분을 그대로 복제한 export 함수 제작. testing file에 적용.
+2. nest한 방법
+
+app 모듈이 pipe과 session를 세팅하게 함.
+
+```tsx
+// app.module.ts
+@Module({
+  imports: [TypeOrmModule.forRoot({
+    type: 'sqlite',
+    database: 'db.sqlite',
+    entities: [User, Report],
+    synchronize: true,
+  }),
+    UsersModule, ReportsModule],
+  controllers: [AppController],
+  providers: [AppService,
+    {
+      provide: APP_PIPE,
+      useValue: new ValidationPipe({
+        whitelist: true
+      })
+    }
+  ],
+})
+```
+
+app 모듈에서 providers로 validationPipe 만들어 사용하도록 설정.
+
+```tsx
+export class AppModule {
+  configure(consumer: MiddlewareConsumer){
+    consumer.apply(
+        cookieSession({
+          keys: ['asfasfdasdf'],
+        })).forRoutes('*');
+  }
+}
+```
+
+쿠키 세션 미들웨어를 글로벌 미들웨어로 변경.
+
+forRoutes(*)로 모든 request 적용하게 만들어 global middleWare로 만듦.
+
+하지만 이래도 에러 뜸 왜?
+
+이메일이 실제로 테스트 과정에서 만들어지고, 또 똑같이 만들면 400 에러 뜨기 때문.
+
+테스트할 때 마다 새로운 App instance와 빈 DB를 만들어 독립적으로 사용하는 방법이 있음. 하지만 그러면 sign in 할 때 기존 아이디가 없어 테스트 할 수 없음.
+
+따라서 Development Mode db와 Testing Mode db 분리.
+
+```tsx
+//app.module.ts
+
+imports: [TypeOrmModule.forRoot({
+    type: 'sqlite',
+    database: process.env.NODE_ENV === 'test' ? 'test.sqlite' : 'db.sqlite',
+    entities: [User, Report],
+    synchronize: true,
+  }),
+```
+
+typeOrmModule에서 database 지정하는 string을 환경에 따라 다르게 지정하는 방법이 있음.

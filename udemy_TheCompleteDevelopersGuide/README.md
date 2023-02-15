@@ -1075,3 +1075,128 @@ imports: [TypeOrmModule.forRoot({
 ```
 
 typeOrmModule에서 database 지정하는 string을 환경에 따라 다르게 지정하는 방법이 있음.
+
+## Section14(Managing App Configuration)
+
+`@nestjs/config` 이용에 관하여.
+
+dotenv는 기본적으로 js에서 제공해주는 라이브러리로, configuration 관리 가능.
+
+하지만, nest의 docs와 다르게 하나 이상의 .env 파일을 제작하지 못함. → production과 local 차이나는 config 설정 어려움.
+
+```tsx
+@Module({
+  imports: [
+      ConfigModule.forRoot({
+        isGlobal: true,
+        envFilePath: `.env.${process.env.NODE_ENV}`
+      }),
+			TypeOrmModule.forRootAsync({
+			        inject: [ConfigService],
+			        useFactory: (config: ConfigService) => {
+			          return {
+			            type: 'sqlite',
+			            database: config.get<string>('DB_NAME'),
+			            synchronize: true,
+			            entities: [User, Report],
+			          }
+			        }
+			      }),
+```
+
+ConfigModule를 `@nestjs/config`에서 import하여 환경에 따라 다른 env path 설정.
+
+TypeOrmModule에 ConfigService 주입하여, config에 따라 DB_NAME을 가져오도록 설정.
+
+이제 저 NODE_ENV를 undefined되지 않도록 지정해주어야 함.
+
+runtime environment를 지정하기 위하여, `cross-env` 라이브러리 설치.
+
+```tsx
+"scripts": {
+    "build": "nest build",
+    "format": "prettier --write \"src/**/*.ts\" \"test/**/*.ts\"",
+    "start": "cross-env NODE_ENV=development nest start",
+    "start:dev": "cross-env NODE_ENV=development nest start --watch",
+    "start:debug": "cross-env NODE_ENV=development nest start --debug --watch",
+    "start:prod": "node dist/main",
+    "lint": "eslint \"{src,apps,libs,test}/**/*.ts\" --fix",
+    "test": "cross-env NODE_ENV=test jest",
+    "test:watch": "cross-env NODE_ENV=test jest --watch",
+    "test:cov": "cross-env NODE_ENV=test jest --coverage",
+    "test:debug": "cross-env NODE_ENV=test node --inspect-brk -r tsconfig-paths/register -r ts-node/register node_modules/.bin/jest --runInBand",
+    "test:e2e": "cross-env NODE_ENV=test jest --config ./test/jest-e2e.json"
+  },
+```
+
+package.json에서 cross-env로 NODE_ENV 지정.
+
+하지만 이대로 test 돌리면 database is locked 에러가 뜸. db instance를 2개 이상 만들었기 때문.
+
+따라서 이를 해결하기 위해서는 jest에게 테스트를 병렬처리하지 말라고 하면 됨.
+
+```tsx
+"test:e2e": "cross-env NODE_ENV=test jest --config ./test/jest-e2e.json --maxWorkers=1"
+```
+
+package.json script에서 해당 옵션에 —maxWorkers를 1로 주면 됨.
+
+이제 테스트 전에 db를 wipe하고 db를 recreate 자동화하는 작업이 가능함.(즉 초기화!)
+
+테스트마다 한 번 실행되는 global beforeEach 지정.
+
+```tsx
+//jest-e2e.json
+
+{
+  "moduleFileExtensions": ["js", "json", "ts"],
+  "rootDir": ".",
+  "testEnvironment": "node",
+  "testRegex": ".e2e-spec.ts$",
+  "transform": {
+    "^.+\\.(t|j)s$": "ts-jest"
+  },
+  "setupFilesAfterEnv": ["<rootDir>/setup.ts"]
+}
+```
+
+그것을 위해서 `jest-e2e.json`에 `setupFilesAfterEnv` 설정 추가하여 파일이 실행되도록 함.
+
+```tsx
+//setup.ts
+
+import { rm } from 'fs/promises';
+import { join } from 'path';
+
+global.beforeEach(async () => {
+    await rm(join(__dirname, '..', 'test.sqlite'));
+});
+```
+
+그리고 setup.ts에 global beforeEach 실행.
+
+라이브러리를 활용해서 test.sqlite 파일을 초기화하도록 설정.
+
+```tsx
+it('signup as a new user then get the currently logged in user', async () => {
+        const email = 'asdf@asdf.com';
+
+        const res = await request(app.getHttpServer())
+            .post('/auth/signup')
+            .send({email, password: 'asdf'})
+            .expect(201)
+
+        const cookie = res.get('Set-Cookie');
+
+        const { body } = await request(app.getHttpServer())
+            .get('/auth/whoami')
+            .set('Cookie', cookie)
+            .expect(200)
+        
+        expect(body.email).toEqual(email)
+    })
+```
+
+나머지 테스트 부분 제작.
+
+response를 바탕으로 쿠키 가져오고, 쿠키 설정도 테스트 가능.

@@ -1200,3 +1200,238 @@ it('signup as a new user then get the currently logged in user', async () => {
 나머지 테스트 부분 제작.
 
 response를 바탕으로 쿠키 가져오고, 쿠키 설정도 테스트 가능.
+
+
+## Section15(Relations with TypeORM)
+
+reports 기능 제작하는 시간.
+
+```tsx
+// src/reports/dtos/create-report.dto.ts
+
+import {
+    IsString,
+    IsNumber,
+    Min,
+    Max,
+    IsLongitude,
+    IsLatitude,
+} from "class-validator";
+
+export class CreateReportDto {
+    @IsString()
+    make: string;
+
+    @IsString()
+    model: string;
+
+    @IsNumber()
+    @Min(1930)
+    @Max(2100)
+    year: number;
+
+    @IsNumber()
+    @Min(0)
+    @Max(1000000)
+    mileage: number;
+
+    @IsLongitude()
+    lng: number;
+
+    @IsLatitude()
+    lat: number;
+
+    @IsNumber()
+    @Min(0)
+    @Max(1000000)
+    price: number;
+}
+```
+
+먼저 Craeate에 대한 Dto 정의.
+
+number 범위 지정 위해 min max import
+
+```tsx
+// src/reports/reports.controller.ts
+
+import { Controller, Post, Body, UseGuards } from '@nestjs/common';
+import {CreateReportDto} from "./dtos/create-report.dto";
+import { ReportsService } from "./reports.service";
+import { AuthGuard } from "../guards/auth.guard";
+
+@Controller('reports')
+export class ReportsController {
+    constructor(private reportsService: ReportsService) {}
+
+    @Post()
+    @UseGuards(AuthGuard)
+    createReport(@Body() body: CreateReportDto) {
+        return this.reportsService.create(body);
+    }
+}
+```
+
+그다음 Controller
+
+Injectable한 Service constructor로 정의.
+
+only user Authenticated를 주기 위해, useGuard로 Auth.guard 설정.
+
+```tsx
+// /src/reports/reports.service.ts
+
+import { Injectable } from '@nestjs/common';
+import { InjectRepository } from "@nestjs/typeorm";
+import { Repository } from "typeorm";
+import { Report } from "./report.entity";
+import {CreateReportDto} from "./dtos/create-report.dto";
+
+@Injectable()
+export class ReportsService {
+    constructor(
+       @InjectRepository(Report) private repo: Repository<Report>
+    ) {}
+
+    create(reportDto: CreateReportDto) {
+        const report = this.repo.create(reportDto);
+
+        return this.repo.save(report);
+    }
+}
+```
+
+이제 필요한 service 제작.
+
+repository 설정이 필요.
+
+이제 관계형이 필요!!
+
+reports한 사용자가 누구인지, user_id라는 관계형 column 필요
+
+관계형 종류
+
+- one to one. (수도 & 국가)
+- one to many & many to one (소비자 & 주문)
+- many to many (수업들 & 학생들)
+
+typeorm 라이브러리로 데코레이터 이용해서 관계형 설정 가능.
+
+```tsx
+//src/users/user.entity.ts
+
+...
+
+@OneToMany(()=> Report, (report) => report.user)
+    reports: Report[];
+
+...
+```
+
+```tsx
+// src/reports/report.entity.ts
+
+...
+
+@ManyToOne(() => User, (user) => user.reports)
+    user: User;
+
+...
+```
+
+User는 OneToMany, 그리고 reports는 ManyToOne
+
+데코레이터로 첫 argument로 상대 Entity를 불러와서 지정.(dependency)
+
+그 다음 두 번째 arguemnt에서 어떤 column인 관계가 있는지 설정. (relation이 어떻게 setup 되는지! 어떻게 그 instance에서 column까지 이동을 할지!)
+
+```tsx
+// reports/reports.controller.ts
+
+...
+
+@Post()
+    @UseGuards(AuthGuard)
+    createReport(@Body() body: CreateReportDto, @CurrentUser() user: User) {
+        return this.reportsService.create(body, user);
+    }
+
+...
+```
+
+```tsx
+// reports/reports.service.ts
+
+...
+
+create(reportDto: CreateReportDto, user: User) {
+        const report = this.repo.create(reportDto);
+        report.user = user;
+
+        return this.repo.save(report);
+    }
+
+...
+```
+
+초반에 만들었던 current user decorator를 이용하여, Controller에서 user entity를 가져옴.
+
+service에서 user entity를 report에 등록.
+
+그런데, response에서 원치 않은 password까지 보내주게 됨..
+
+그럼 무슨 방법이 있을까?
+
+- user entity에 있는 모든 정보가 들어감.
+- 따라서 그냥 userId만 response에 넣도록 하는 것도 방법.
+
+따라서 response를 formatting!
+
+```tsx
+// reports/dtos/report.dto.ts
+
+import { Expose, Transform } from "class-transformer";
+
+export class ReportDto {
+    @Expose()
+    id: number;
+    @Expose()
+    price: number;
+    @Expose()
+    year: number;
+    @Expose()
+    lng: number;
+    @Expose()
+    lat: number;
+    @Expose()
+    make: string;
+    @Expose()
+    model: string;
+    @Expose()
+    mileage: number;
+
+    @Transform(({ obj }) => obj.user.id)
+    @Expose()
+    userId: number;
+}
+```
+
+```tsx
+// reports/reports.controller.ts
+
+....
+
+    @Post()
+    @UseGuards(AuthGuard)
+    @Serialize(ReportDto)
+    createReport(@Body() body: CreateReportDto, @CurrentUser() user: User) {
+        return this.reportsService.create(body, user);
+
+....
+```
+
+Dto 활용하여 response formatting.
+
+userId 경우 Transform을 이용해서 user id 가져옴.
+
+controller에서 Serialize 데코레이터를 감싸주고 formatting해줄 Dto 지정.

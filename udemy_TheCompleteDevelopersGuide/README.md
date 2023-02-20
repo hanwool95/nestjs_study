@@ -1435,3 +1435,246 @@ Dto 활용하여 response formatting.
 userId 경우 Transform을 이용해서 user id 가져옴.
 
 controller에서 Serialize 데코레이터를 감싸주고 formatting해줄 Dto 지정.
+
+
+## Section16(Basic Permissions System)
+
+```tsx
+// report.entity.ts
+
+@Entity()
+export class Report {
+
+...
+
+    @Column({ default: false })
+    approved: boolean;
+
+...
+```
+
+승인 시스템 만들기 위해 entity에 report이라는 boolean column 추가.
+
+```tsx
+// dtos/approve-report.dto.ts
+
+import { IsBoolean } from "class-validator";
+
+export class ApproveReportDto {
+    @IsBoolean()
+    approved: boolean;
+}
+```
+
+validation 체크를 위한 dto 제작.
+
+```tsx
+// reports.controller.ts
+
+@Controller('reports')
+export class ReportsController {
+...
+
+	@Patch('/:id')
+    approveReport(@Param('id') id: string, @Body() body: ApproveReportDto){
+        return this.reportsService.changeApproval(id, body.approved)
+    }
+}
+```
+
+Controller에 approved를 수정할 수 있도록 Patch 데코레이터로 감싸진 approveReport 제작.
+
+```tsx
+// reports.service.ts
+
+@Injectable()
+export class ReportsService {
+
+...
+
+async changeApproval(id: string, approved: boolean) {
+        const report = await this.repo.findOne({ where: { id: parseInt(id)}});
+        if (!report) {
+            throw new NotFoundException('report not found');
+        }
+        
+        report.approved = approved;
+        return this.repo.save(report);
+    }
+}
+
+```
+
+id 기준으로 찾고, approved 대로 바꿔주는 서비스 제작.
+
+이제 이 로직을 application 운영자만 할 수 있도록 Authorization 제작.
+
+여기서 Authentication과 Authorization 차이!
+
+- Authentication: 누가 이 request를 만들었는지 확인하는 것(Interceptor로 current user 쿠키 확인하는 것 같은)
+- Authorization: request 만든 사람이 접근 허용 되었는지 확인하는 것 (auth.guard 같은 것)
+
+reports 수정으로 Request 오면, `AdminGuard`이 `request.currentUser`가 `administrator`인지 확인하고, routeHandler로 보내도록 제작할 것.
+
+```tsx
+// user.entity.ts
+
+@Entity()
+export class User {
+
+...
+
+    @Column( { default: false })
+    admin: boolean;
+
+...
+```
+
+Admin Guard 만들기 위해 userEntity에 먼저 admin column 제작해야 함.
+
+```tsx
+// guards/admin.guard.ts
+
+import { CanActivate, ExecutionContext } from "@nestjs/common";
+
+export class AdminGuard implements CanActivate {
+    canActivate(context: ExecutionContext) {
+        const request = context.switchToHttp().getRequest();
+        if (!request.currentUser) {
+            return false
+        }
+        return request.currentUser.admin;
+    }
+}
+```
+
+guards 디렉 안에 admin.guard.ts 제작.
+
+request의 currentUser.admin을 return 하는 guard.
+
+```tsx
+		@Patch('/:id')
+    @UseGuards(AdminGuard)
+    approveReport(@Param('id') id: string, @Body() body: ApproveReportDto){
+        return this.reportsService.changeApproval(id, body.approved)
+    }
+```
+
+만들어 놓은 서비스에 데코레이터 지정.
+
+이렇게 하면 될 것 같지만, 기대한 것과 달리 403 에러 발생.
+
+왜?
+
+nest의 근본적인 구조 때문.
+
+- 기본 플로우
+  - Request → 미들웨어 → Guards → Request Handler(전 후에 Interceptor) → Response
+- 제작한 구조 기반 플로우
+  - Request → 쿠키 세션 미들웨어 → AdminGuard → Request Handler (CurrentUserInterceptor) → Response
+
+CurrentUserInterceptor가 실행되기 전에 AdminGuard가 실행되기 때문. currentUser가 세팅이 안된 것. currentUser가 무조건 undefined가 되기에 403이 나온 것.
+
+따라서 CurrentUserInterceptor를 (Global) 미들웨어로 바꿔서 AdminGuard 실행 전에 currentUser를 받아올 수 있도록 해야 함.
+
+```tsx
+// users/middlewares/current-user.middleware.ts
+
+import {Injectable, NestMiddleware} from "@nestjs/common";
+import {NextFunction, Request, Response} from "express";
+import {UsersService} from "../users.service";
+
+import { User } from "../user.entity";
+
+declare global {
+    namespace Express {
+        interface Request {
+            currentUser?: User;
+        }
+    }
+}
+
+@Injectable()
+export class CurrentUserMiddleware implements NestMiddleware {
+    constructor(
+        private userService: UsersService
+    ) {}
+
+    async use(req: Request, res: Response, next: NextFunction) {
+        const { userId } = req.session || {};
+
+        if (userId) {
+            req.currentUser = await this.userService.findOne(userId);
+        }
+        next();
+    }
+}
+```
+
+NestMiddleware 기반으로 미들웨어 제작.
+
+Injection을 이용해서 UserService 사용.
+
+declare global로 Express의 Request에 currentUser가 있다는 타입 지정.
+
+```tsx
+// user/user.module.ts
+
+.....
+
+export class UsersModule {
+  configure(consumer: MiddlewareConsumer) {
+    consumer.apply(CurrentUserMiddleware).forRoutes('*');
+  }
+}
+```
+
+users.module에서 글로벌 middleware 지정.
+
+nest는 query param으로 받는 것을  모두 string으로 받아들임
+
+so, validation 지정이 필요할 때 따로 처리 필요.
+
+```tsx
+// dtos/get-estimate.dto.ts
+
+import {
+    IsString,
+    IsNumber,
+    Min,
+    Max,
+    IsLongitude,
+    IsLatitude,
+} from "class-validator";
+import { Transform } from "class-transformer";
+
+export class GetEstimateDto {
+    @IsString()
+    make: string;
+
+    @IsString()
+    model: string;
+
+    @Transform(({ value }) => parseInt(value))
+    @IsNumber()
+    @Min(1930)
+    @Max(2100)
+    year: number;
+
+    @Transform(({ value }) => parseInt(value))
+    @IsNumber()
+    @Min(0)
+    @Max(1000000)
+    mileage: number;
+
+    @Transform(({ value }) => parseFloat(value))
+    @IsLongitude()
+    lng: number;
+
+    @Transform(({ value }) => parseFloat(value))
+    @IsLatitude()
+    lat: number;
+}
+```
+
+`class-transformer`의 `Transform` 데코레이터 사용!

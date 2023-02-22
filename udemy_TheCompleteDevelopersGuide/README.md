@@ -1678,3 +1678,154 @@ export class GetEstimateDto {
 ```
 
 `class-transformer`의 `Transform` 데코레이터 사용!
+
+
+### Section 18(Production Deployment)
+
+이제 배포!!
+
+```tsx
+export class AppModule {
+    constructor(
+        private configService: ConfigService
+    ) {
+    }
+  configure(consumer: MiddlewareConsumer){
+    consumer.apply(
+        cookieSession({
+          keys: [this.configService.get('COOKIE_KEY')],
+        }),
+        )
+        .forRoutes('*');
+  }
+}
+```
+
+쿠키 key issue
+
+글로벌 미들웨어로 세션을 임의로 string 만들었어.
+
+production에서는 환경변수로 넣어야 함.
+
+so, static하게 하드코딩으로 넣었던 키를 env 불러와서 적용.
+
+이 프로젝트의 프로덕션 환경에서는 Postgres 사용할 것.
+
+SQLite로 돌렸던 개발과 테스트환경과 다르게, 프로덕션을 위한 세팅이 필요.
+
+Synchronize Flag true dhqtus의 문제점.
+
+entity = database!?
+
+실수로 요소를 지우면, db의 열을 지워서 모든 데이터를 잃어버릴 수 있어.
+
+따라서 deploy할 때는 `synchronize: false` 절대적으로 해라!
+
+그럼 db 구조 어떻게 변경해? 그래서 `migration`을 이용하는 것!!
+
+Migration File에서 up()으로 구조를 만들고, down()은 up으로 만든 모든 것을 지우도록.
+
+그럼 typeORM에서 migration 만드는 방법?
+
+- nest와 typeORM은 정말 쿵짝 맞지만, migration으로 가면 정말 별로다라고 강의자는 주장.
+
+개발환경 migration 만드는 방법
+
+- 서버 중단
+- TypeORM CLI로 migration file 생성
+- migration 파일에서 코드 변경
+- TypeORM CLI로 migration db에 적용
+- DB 업데이트, 그리고 서버 재실행
+
+그런데,, nest에서 TypeORM? TypeORM CLI는 오직 엔티티와 migration file만 실행함. nest가 무엇인지, config module이 뭔지 모름! 어떻게 module이 db 연결하는지 모르는 난감한 상태임.
+
+다시 말하자면 그래서 왜 이게 그렇게 어려워?
+
+일단 CLI에게 어떻게 db 연결하고 migration하는지 알려줘야 해.
+
+원래는 app module이 연결했지만 module를 TypeORM CLI가 보지를 않아!
+
+연결하는 여러 방법을 typeorm.io/#/using-ormconfig에서 알려줌.
+
+하지만 이 각 방법이 생각만큼 잘 동작하지 않음.
+
+- ormconfig.json: script가 없어서 static하기에 환경 구분할 수 없음
+- ormconfig.xml: script가 없어서 static하기에 환경 구분할 수 없음
+- 환경변수: Deploy할 때 문제가 됨. typeORM이 특정 변수를 사용하도록 함.
+- ormconfig.js
+- ormconfig.ts
+
+그럼 js와 ts 파일만 가능?
+
+ts 파일은 기대했던 것처럼 되지는 않음.
+
+```tsx
+// ormconfig.ts
+
+export = {
+    type: 'sqlite',
+    database: 'db.sqlite',
+    entities: ['**/*.entity.ts'],
+    synchronize: false
+}
+```
+
+하지만 에러가 나옴.
+
+TypeORM은 ormconfig 파일을 접근해서 connection setting하는데, 서버 실행 과정에서 export에 대해서 unexpect가 나옴.
+
+그럼 왜 에러가 ts에서 나오는 것? nest 실핼 할 때마다 모든 ts src 파일을 js로 번역해서 dist 폴더 안 main에 밀어 넣음. ts가 js가 되는 시점에 ormconfig.ts는 자바스크립트가 되어 execution이 fail 되는 것. ts 파일을 만들었음에도.
+
+그래서 ormconfig.ts는 사용할 수 없어.
+
+```tsx
+// ormconfig.js
+
+module.exports = {
+    type: 'sqlite',
+    database: 'db.sqlite',
+    entities: ['**/*.entity.ts'],
+    synchronize: false
+}
+```
+
+그러면 ormconfig.js는 좋아?
+
+이것도 이슈 있어.
+
+js로 변환 되었기에, *.entity.ts import를 하지 못함.
+
+그럼 entity도 js로 바꾸면? 서버가 실행 되기는 함!!
+
+그럼 문제 없어??
+
+아니야….. Multiple environment에서 운영이기에 다른 부분도 봐야해!
+
+그래서 test를 돌리면 fail이 뜸. js를 가져온다는 에러…
+
+execution 환경과 test 환경은 또 다르기에. test 환경은 ts-jest를 실행. typescript를 direct하게! 따라서, ormconfig.ts 파일은 test가 또 가능하긴 할 것.
+
+그래서 ts-jest에게 js 파일 있어도 괜찮다는 세팅을 해야 함.
+
+그럼 tsconfig.json에 allow js true를 한다면?
+
+일단 test 돌려도 에러 뜸… ㅎ… 무슨 문제?
+
+Entity를 불러오지 않음. test가 운영될 때는 오직 ts를 가져오는데, entity들이 js로 되어 있기에 문제.
+
+```tsx
+// ormconfig.js
+
+module.exports = {
+    type: 'sqlite',
+    database: 'db.sqlite',
+    entities: process.env.NODE_ENV === 'development'
+        ? ['**/*.entity.js']
+        : ['**/*.entity.ts'],
+    synchronize: false
+};
+```
+
+그래서 env에 따라 다르게 설정해야 함!
+
+이런식으로 nest와 typeORM은 config 세팅이 서로 맞물려서 복잡하다 함.

@@ -1829,3 +1829,154 @@ module.exports = {
 그래서 env에 따라 다르게 설정해야 함!
 
 이런식으로 nest와 typeORM은 config 세팅이 서로 맞물려서 복잡하다 함.
+
+ormconfig.js 파일에 typeORM모듈 정의 파트 분리하여 환경별로 나누도록 제작.
+
+```tsx
+// ormconfig.js
+
+var dbConfig = {
+    synchronize: false
+};
+
+switch (process.env.NODE_ENV) {
+    case 'development':
+        Object.assign(dbConfig, {
+            type: 'sqlite',
+            database: 'db.sqlite',
+            entities: ['**/*.entity.js'],
+            synchronize: false
+        })
+        break;
+    case 'test':
+        Object.assign(dbConfig, {
+            type: 'sqlite',
+            database: 'test.sqlite',
+            entities: ['**/*.entity.ts'],
+            synchronize: false
+        })
+        break;
+    case 'production':
+        break;
+    default:
+        throw new Error('unknown environment')
+}
+```
+
+switch 문을 이용해서 NODE_ENV에 따라 다른 config 적용.
+
+default는 우리가 예상하지 못한 env가 온 것이기에, 에러 처리.
+
+synchronize는 확실히 false로 설정. 지우고 서버 실행하면, synchronize false로 생각한 대로 처리가 안 될 것.
+
+따라서 migration이 필요해! migration 위해서는 TypeORM cli 활용.
+
+typeorm.io/#/using-cli
+
+entity를 설정하는 방법으로 js, ts 두 가지 방법.
+
+우리는 ts 방법으로 할 것. 하지만 typeORM은 ts랑 호환이 잘 되지는 않음.
+
+1. `npm install -g ts-node` 설치하고.
+2. package.json에 script영역에 typeorm 커맨드 정의
+   `"typeorm": "cross-env NODE_ENV=development node --require ts-node/register ./node_modules/typeorm/cli.js"`
+3. `npm run typeorm migration:run`으로 migration 실행 가능.
+
+typeorm.io/#/migrations
+
+1. ormconfig.js에 설정 추가
+
+```tsx
+// ormconfig.js
+
+var dbConfig = {
+    synchronize: false,
+    migrations: ['migrations/*.js'],
+    cli: {
+        migrationsDir: 'migrations',
+    }
+};
+```
+
+1. `npm run typeorm migration:generate -- initial-schema -o`
+   -n으로 이름. -o로 js파일 형성.
+   근데 이 부분부터 typeORM 0.3.0 이상 기준 강의 내용이 반영되지 않음.
+
+type ORM은 entity 달라진 부분을 확인하여 자동으로 migration 작성.
+2. `npm run typeorm migration:run` 으로 migration 반영
+   db.sqilte에 필요한 column이 생성됨.
+
+test environment에도 적용되어야 함.
+
+이대로 실행하면 에러 발생. table이 없기 때문!
+
+```tsx
+// ormconfig.js
+
+...
+case 'test':
+        Object.assign(dbConfig, {
+            type: 'sqlite',
+            database: 'test.sqlite',
+            entities: ['**/*.entity.ts'],
+            migrationsRun: true
+        })
+        break;
+...
+```
+
+test 실행할 때마다 (test) db를 삭제할 것이기에, 매 test 실행마다 migration 실행되도록 해야 함.
+
+이제 실제 배포 프로세스 config 설정!
+
+Heroku에 배포할 것.
+
+헤로쿠에서 Nest App 있는 Git Repo와 Postgres DB 연결.
+
+```tsx
+// ormconfig.js
+
+case 'production':
+        Object.assign(dbConfig, {
+            type: 'postgres',
+            url: process.env.DATABASE_URL,
+            migrationsRun: true,
+            entities: ['**/*.entity.js'],
+            ssl: {
+                rejectUnauthorized: false
+            }
+        })
+        break;
+```
+
+production에서는 postgres 사용.
+
+database에 접근 가능한 user id password 포함된 db url를 환경변수로 정의
+
+migrations이 빌드마다 이루어지도록 정의
+
+entity의 위치 제공.
+
+Procfile로 헤로쿠가 어떻게 app 실행할지 정의해줘.
+
+```tsx
+// Procfile
+
+web: npm run start:prod
+```
+
+tsconfig.build.json에 빌드시 제외될 부분 지정
+
+```tsx
+// tsconfig.build.json
+{
+  "extends": "./tsconfig.json",
+  "exclude": ["ormconfig.js", "migrations","node_modules", "test", "dist", "**/*spec.ts"]
+}
+```
+
+`heroku addons:create heroku-postgresql:hobby-dev` db 생성
+
+`heroku config:set COOKIE_KEY=lkdsjfldksfjdl`  환경변수 설정
+
+`heroku config:set NODE_ENV=production` production 환경이라는 것 환경변수로 설정.

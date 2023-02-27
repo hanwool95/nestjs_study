@@ -1980,3 +1980,108 @@ tsconfig.build.json에 빌드시 제외될 부분 지정
 `heroku config:set COOKIE_KEY=lkdsjfldksfjdl`  환경변수 설정
 
 `heroku config:set NODE_ENV=production` production 환경이라는 것 환경변수로 설정.
+
+## 보너스 타입스크립트 강의
+
+Typescript = Javascript + A type system(이것에 대해 다루고자 함.)
+
+type system 목표
+
+- 개발 과정에서 에러 잡아내는 것!
+- 타입 주석처럼 사용하여 코드 분석에 용이함
+- 당연히 개발 환경에서만 작동, 브라우저는 타입스크립트 몰라용
+- 퍼포먼스 최적화를 제공하지는 않음
+
+typescript compiler 설치.
+
+`npm install -g typescript ts-node`
+
+간단한 network API 제작하여 타입스크립트가 왜 필요한지 보여주는 강의.
+
+`jsonplaceholder.typicode.com`
+
+fake api 사용 가능.
+
+```tsx
+import axios from "axios";
+
+const url = 'https://jsonplaceholder.typicode.com/todos/1'
+
+axios.get(url).then(response => {
+    console.log(response.data);
+});
+```
+
+간단히 get 하는 함수 제작.
+
+`ts-node index.ts`
+
+tsc index.ts → node index.js 과정을 하나로 함축하는 명령어.
+
+타입스크립트를 js로 인코딩하고 실행.
+
+```tsx
+		const todo = response.data;
+
+    const ID = todo.ID;
+    const title = todo.Title;
+    const finished = todo.finished;
+```
+
+코드를 실행하기 전에는, 데이터를 잘 불러오는지 알 수 없어.
+
+그래서 타입스크립트 쓰는 것.
+
+```tsx
+interface Todo {
+    id: number;
+    title: string;
+    completed: boolean;
+}
+
+axios.get(url).then(response => {
+    const todo = response.data as Todo;
+
+    const ID = todo.ID;
+    const title = todo.Title;
+    const finished = todo.finished;
+
+});
+```
+
+type 지정을 해주면 개발 환경에서 에러를 잡아줌.
+
+```tsx
+logTodo(id, completed, title)
+});
+
+const logTodo = (id, title, completed) => {
+    console.log(`
+        The Todo with ID: ${id}
+        Has a title of: ${title}
+        Is it finished? ${completed}
+    `);
+};
+```
+
+파라미터 잘못들어간 것도 js에서는 실행 전까지는 몰라.
+
+```tsx
+logTodo(id, title, completed)
+});
+
+const logTodo = (id: number, title: string, completed: boolean) => {
+    console.log(`
+        The Todo with ID: ${id}
+        Has a title of: ${title}
+        Is it finished? ${completed}
+    `);
+};
+```
+
+파라미터에 타입 지정해주어 잘못 들어갔을 경우 바로 에러 확인 가능.
+
+Type: 다른 속성과 함수에 대해 그 값이 갖고 있는 것을 알려주는 쉬운 방법.
+
+- Primitive Types: number, boolean, void, undefined, string, symbol, null
+- Object Types: functions, arrays, classes, objects

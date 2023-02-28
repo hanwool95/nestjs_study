@@ -2085,3 +2085,59 @@ Type: 다른 속성과 함수에 대해 그 값이 갖고 있는 것을 알려�
 
 - Primitive Types: number, boolean, void, undefined, string, symbol, null
 - Object Types: functions, arrays, classes, objects
+- Type annotations: 코드. 타입스크립트에게 어떤 타입을 사용할지 알려주는 것.
+- Type inference: 타입스크립트가 어떤 타입일지 알아내는 것.
+    - 변수 선언과 변수 할당이 같은 줄에 있다면 타입스크립트는 타입을 유추함 `let apples = 5;`
+    - 그럼 왜 annotations를 작성하고 언제 작성해? 어차피 타입스크립트가 알아낸다며?
+        1. 함수가 any 타입을 반환할 때!: 다양한 반환 값 가능성이 있는 함수일 경우.
+
+            ```tsx
+            // When to use annotations
+            // 1) Function that returns the 'any' type
+            const json = '{"x": 10, "y": 20}';
+            const coordinates: { x: number; y: number;} = JSON.parse(json);
+            console.log(coordinates)
+            ```
+
+        2. 변수 선언 이후, 나중에 값을 할당할 때: 변수에 다양한 값 할당 가능성이 있는 경우!
+
+            ```tsx
+            // 2) When we declare a variable on one line
+            // and init later
+            letwords= ['red', 'green', 'blue'];
+            letfoundWord: boolean;
+            
+            for (let i = 0; i <words.length; i++){
+                if (words[i] === 'green'){
+            foundWord= true
+                }
+            }
+            ```
+
+        3. inferred가 정확히 되지 않을 때. 즉, inferred대로 되지 않는 예외 케이스가 있을 때
+
+            ```tsx
+            // 3) Variable whose type cannot be inferred correctly
+            letnumbers= [-10, -1, 12];
+            letnumberAboveZero: boolean | number = false;
+            
+            for (let i = 0; i <numbers.length; i++) {
+                if (numbers[i] < 0) {
+            numberAboveZero=numbers[i];
+                }
+            }
+            ```
+
+
+
+```tsx
+// annotations
+const logNumber: (i: number) => void = (i) => {
+    console.log(i);
+}
+
+// inference
+const logNumber: (i: number) => void = (i: number) => {
+    console.log(i);
+}
+```

@@ -2141,3 +2141,126 @@ const logNumber: (i: number) => void = (i: number) => {
     console.log(i);
 }
 ```
+### Function의 Type
+
+- Annotations for Functions: Typescript에 어떤 타입의 argument를 받고, 어떤 타입의 값을 반환할지 알려주는 것.
+- inference for functions: 오직 반환 값만 알아 냄.
+
+```tsx
+const add = (a: number, b: number): number => {
+    return a + b;
+};
+
+// return 값은 예측해줌!(argument는 역으로 예측 안함)
+const add = (a: number, b: number) => {
+    return a + b;
+};
+// 하지만 return type을 정해주면 error를 일으켜 휴먼 에러를 잡아주기에 타입 지정해주면 좋긴 함.
+```
+
+### void와 Never
+
+- void: undefined가 반환되는 것.
+- never: `throw new Error();` 같은 경우, 어떤 것도 반환되지 않는 것.
+
+```tsx
+const logger = (message: string): void => {
+    console.log(message);
+    return undefined;
+}
+
+const throwError = (message: string): never => {
+    throw new Error(message);
+}
+```
+
+### Destructing
+
+```tsx
+const logWeather = (forecast: { date: Date, weather: string}): void => {
+    console.log(forecast.date)
+    console.log(forecast.weather)
+}
+
+// ES2015
+const logWeatherDestructed = ({ date, weather }: { date: Date, weather: string}) => {
+    console.log(date)
+    console.log(weather)
+}
+
+logWeather(todaysWeather)
+```
+
+```tsx
+const profile = {
+    name: 'alex',
+    age: 20,
+    coords: {
+        lat: 0,
+        lng: 15
+    },
+    setAge(age: number): void {
+        this.age = age;
+    }
+};
+
+const { age }: { age: number } = profile;
+const { coords: { lat, lng } }: { coords: { lat: number; lng: number } } = profile;
+```
+
+비구조 할당 할 때도 비구조된 양식으로 타입 지정해야 함.
+
+### Array
+
+```tsx
+const carMakers = ['ford', 'toyota', 'chevy'];
+```
+
+이런식으로 string만 정의하면, type inferrence는 아 `string[]`이라는 것을 유추함.
+
+```tsx
+const carMakers: string[] = [];
+```
+
+하지만 빈 array라서 inferrence가 안 된다면 지정해줘야 함.
+
+```tsx
+const carsByMake: string[][] = [
+    ['f150'],
+    ['corolla'],
+    ['camaro']
+];
+```
+
+2차원 array도 가능함!
+
+- 값을 추출할 때 어떤 타입인지 유추하게 도와줌!
+
+```tsx
+// Help with inference when extracting values
+const car = carMakers[0];
+const myCar = carMakers.pop();
+```
+
+- 잘 못된 값을 넣을 때 에러로 막아줌!
+
+```tsx
+// Prevent incompatible values
+carMakers.push(100)
+```
+
+- map 함수를 도와줄 뿐더러, 그 안쪽에서도 어떤 value를 선택할 수 있는지 도와줌!
+
+```tsx
+// Help with 'map'
+carMakers.map((car: string): string => {
+    return car;
+})
+```
+
+- 유동적으로 다양한 type을 지정해 관리할 수 있음.
+
+```tsx
+// Flexible types
+const importantDates: (Date | string)[] = [new Date(), '2030-10-10'];
+```

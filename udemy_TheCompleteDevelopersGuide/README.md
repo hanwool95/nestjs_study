@@ -2264,3 +2264,164 @@ carMakers.map((car: string): string => {
 // Flexible types
 const importantDates: (Date | string)[] = [new Date(), '2030-10-10'];
 ```
+
+### Tuple
+
+튜플: array같은 구조로 각 요소가 특정 record의 속성을 대표함
+
+drink: {color → brown, carbonated → true, sugar → 40}
+
+⇒ [ brown, true, 40 ]: [ string, boolean, number ]
+
+order에 따라 element 속성을 알게 됨!
+
+```tsx
+const drink = {
+    color: 'brown',
+    carbonated: true,
+    sugar: 40
+};
+
+const pepsi = ['brown', true, 40];
+```
+
+하지만 pepsi 이대로 사용하면 order 깨졌을 때 정보를 잃음.
+
+```tsx
+type Drink = [string, boolean, number];
+
+const pepsi: Drink = ['brown', true, 40];
+```
+
+그래서 튜플 이렇게 사용. 이 order에 어떤 의미가 있다는 것을 개발자에게 인지해 줌.
+
+근데 튜플은
+
+```tsx
+const carSpecs: [number, number] = [400, 3354];
+```
+
+이렇게 된다면 각 number가 무슨 의미인지 몰루
+
+```tsx
+const carStats = {
+    horsepower: 400,
+    weight: 3354
+};
+```
+
+이게 좋지
+
+### Interface
+
+interface? 타입. object의 타입 값을 묘사해줌.
+
+```tsx
+const oldCivic = {
+    name: 'civic',
+    year: 2000,
+    broken: true
+};
+
+const printVehicle = (vehicle: { name: string; year: number; broken: boolean }): void => {
+    console.log(`Name: ${vehicle.name}`)
+    console.log(`Year: ${vehicle.year}`)
+    console.log(`broken: ${vehicle.broken}`)
+};
+
+printVehicle(oldCivic)
+```
+
+이렇게 쓰면 파라미터 타입 지정할 때 너무 길고, 사용할 때마다 반복해서 사용해야 함.
+
+```tsx
+interface Vehicle {
+    name: string;
+    year: number;
+    broken: boolean;
+}
+
+...
+
+const printVehicle = (vehicle: Vehicle): void => {
+    console.log(`Name: ${vehicle.name}`)
+    console.log(`Year: ${vehicle.year}`)
+    console.log(`broken: ${vehicle.broken}`)
+};
+
+...
+```
+
+그래서 인터페이스 사용!!
+
+```tsx
+interface Vehicle {
+    name: string;
+    year: Date;
+    broken: boolean;
+    summary(): string;
+}
+
+const oldCivic = {
+    name: 'civic',
+    year: new Date(),
+    broken: true,
+    summary(): string {
+        return `Name: ${this.name}`;
+    }
+};
+```
+
+또, 다양한 type 사용 가능
+
+함수도 지정 가능!
+
+```tsx
+interface Reportable {
+    summary(): string;
+}
+
+const oldCivic = {
+    name: 'civic',
+    year: new Date(),
+    broken: true,
+    summary(): string {
+        return `Name: ${this.name}`;
+    }
+};
+
+const printSummary = (item: Reportable): void => {
+    console.log(item.summary());
+};
+
+printSummary(oldCivic)
+```
+
+interface. 데이터에 거꾸로 더 많은 props가 있어도 상관이 없음.
+
+```tsx
+const drink = {
+  color: 'brown',
+  carbonated: true,
+  sugar: 40,
+    summary(): string {
+      return `My drink has ${this.sugar} grams of sugar`;
+    }
+};
+
+const printSummary = (item: Reportable): void => {
+    console.log(item.summary());
+};
+
+printSummary(oldCivic)
+```
+
+완전 다른 drink object로도 Reportable로 사용 가능!
+
+다른 shape object랑 사용이 가능하다는 것!
+
+그래서 function에 더 일반적인 로직을 짤 수 있도록 도와줌.
+
+generic interface가 지정되면 되기 때문!
+
+따라서 interfaces의 타입 지정을 받는 함수를 만들어 코드를 만드는 것이 ts의 재사용 전략!

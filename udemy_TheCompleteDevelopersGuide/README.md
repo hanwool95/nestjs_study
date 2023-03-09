@@ -2425,3 +2425,114 @@ printSummary(oldCivic)
 generic interface가 지정되면 되기 때문!
 
 따라서 interfaces의 타입 지정을 받는 함수를 만들어 코드를 만드는 것이 ts의 재사용 전략!
+
+### Classes
+
+classes: object의 blueprint. field(values)와 method(functions)로 구성
+
+ts에서의 클래스는 es15 js와 약간 다름.
+
+```tsx
+class Vehicle {
+    drive(): void {
+        console.log('chugga chugga');
+    }
+
+    honk(): void {
+        console.log('beep');
+    }
+}
+
+class Car extends Vehicle {
+    drive(): void {
+    console.log('vroom');}
+}
+const car = new Car();
+car.drive();
+car.honk();
+```
+
+extends로 확장.
+
+overridden도 존재.
+
+```tsx
+class Vehicle {
+    protected honk(): void {
+        console.log('beep');
+    }
+}
+
+class Car extends Vehicle {
+    private drive(): void {
+    console.log('vroom');
+    }
+
+    startDrivingProcess(): void {
+        this.drive();
+        this.honk();
+    }
+}
+
+const car = new Car();
+car.startDrivingProcess();
+```
+
+일단 modifier
+
+- public: 아무 명시도 하지 않으면 자동으로. 언제 어디서 call 가능한 method.
+- private: 같은 class 안에서만
+- protected: 같은 class와 자녀 class 까지만
+
+override할 때는 child는 부모 것을 수정할 수 없음(같아야 함)
+
+```tsx
+class Vehicle {
+
+    constructor(public color: string = 'red') {
+    }
+
+    protected honk(): void {
+        console.log('beep');
+    }
+}
+```
+
+constructor로 field를 정의 가능.
+
+public을 이용하여 따로 정의할 필요 없이 인자로 filed 정의 가능.
+
+그럼 extend할 때는?
+
+일단 자녀는 constructor할 필요는 없어.
+
+부모것을 자동으로 constructing 함. 만약 자녀에서 constructor를 추가할거면, super();를 추가해야 함.
+
+```tsx
+class Car extends Vehicle {
+    constructor(public wheels: number, color: string) {
+        super(color);
+    }
+ ...
+}
+```
+
+그럼 classes 왜 이용해?
+
+interfaces 이유랑 비슷해. ts에서 재사용성을 높이기 위해서!!
+
+### Parcel로 앱 만들기!
+
+`npm install -g parcel-bundler`
+
+서버 띄우는 법 `npx parcel index.html`
+
+index.html를 읽어서 자동으로 서버 띄움!
+
+각 class가 하나의 분리된 파일 안에서 정리되는 구조로 제작할 것.
+
+- Map.ts, User.ts, Company.ts
+
+faker 라이브러리로 랜덤 데이터 자동 생성.
+
+*참고!! js 라이브러리의 경우 ts에 바로 못 쓰고 `@types/...` 등으로 누군가 만들어 놓은 type 지정 라이브러리를 설치해야 동작할 경우가 있음.

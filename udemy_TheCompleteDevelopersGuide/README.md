@@ -2536,3 +2536,56 @@ index.html를 읽어서 자동으로 서버 띄움!
 faker 라이브러리로 랜덤 데이터 자동 생성.
 
 *참고!! js 라이브러리의 경우 ts에 바로 못 쓰고 `@types/...` 등으로 누군가 만들어 놓은 type 지정 라이브러리를 설치해야 동작할 경우가 있음.
+
+typescript에서 object는 init이 필요해
+
+type 지정해놓고 바로 안에 있는 instance 값 지정하면, undefined에서 지정할 수 없다고 뜸.
+
+```tsx
+import { faker } from "@faker-js/faker";
+class User {
+    name: string;
+    location: {
+        lat: number;
+        lng: number;
+    };
+
+    constructor() {
+        this.name = faker.name.firstName();
+        this.location = {
+            lat: parseFloat(faker.address.latitude()),
+            lng: parseFloat(faker.address.longitude())
+        }
+    }
+}
+```
+
+따라서 object를 제작을 해야 함.
+
+faker 라이브러리를 이용해서 랜덤 가짜 값 채워넣을 수 있음.
+
+export 하면 {} 안에 값아서 해당 값을 다른 곳에서 import 할 수 있음.
+
+default로 export 하면 감싸지 않고, 자신이 원하는 이름으로 지정할 수 있음. 하지만 컨벤션상 ts에서는 default 안 쓴다고 함.
+
+**typecript 라이브러리는, type 지정한 것을 읽는 것만으로 라이브러리 활용 방법에 대한 힌트를 얻을 수 있다!**
+
+```tsx
+export class CustomMap {
+    private googleMap: google.maps.Map;
+
+    constructor(divId: string) {
+        this.googleMap = new google.maps.Map(document.getElementById(divId) as HTMLElement, {
+            zoom: 1,
+            center: {
+                lat: 0,
+                lng: 0
+            }
+        })
+    }
+}
+```
+
+다른 개발자가 특정 라이브러리 작동 원리를 일일히 알 필요 없도록, 추상화할 수 있음. 안쓰이는 라이브러리를 가리고 커스텀 class 제작.
+
+private으로 구글맵에 대해 접근하지 못하도록 설정.

@@ -2589,3 +2589,123 @@ export class CustomMap {
 다른 개발자가 특정 라이브러리 작동 원리를 일일히 알 필요 없도록, 추상화할 수 있음. 안쓰이는 라이브러리를 가리고 커스텀 class 제작.
 
 private으로 구글맵에 대해 접근하지 못하도록 설정.
+
+### ReUseable
+
+마커를 만드는 실습.
+
+그런데 일단 먼저 안 좋은 코드 예시
+
+```tsx
+export class CustomMap {
+    private googleMap: google.maps.Map;
+
+    constructor(divId: string) {
+        this.googleMap = new google.maps.Map(document.getElementById(divId) as HTMLElement, {
+            zoom: 1,
+            center: {
+                lat: 0,
+                lng: 0
+            }
+        })
+    }
+
+    addUserMarker(user: User): void {
+        new google.maps.Marker({
+            map: this.googleMap,
+            position: {
+                lat: user.location.lat,
+                lng: user.location.lng
+            }
+        })
+    }
+
+    addCompanyMarker(company: Company): void {
+        new google.maps.Marker({
+            map: this.googleMap,
+            position: {
+                lat: company.location.lat,
+                lng: company.location.lng
+            }
+        })
+    }
+}
+```
+
+안 좋은 이유: 너무 비슷한 두 메소드!!
+
+그래서 어떻게 만들어?
+
+```tsx
+addMarker(mappable: User | Company): void {
+        new google.maps.Marker({
+            map: this.googleMap,
+            position: {
+                lat: mappable.location.lat,
+                lng: mappable.location.lng
+            }
+        })
+    }
+```
+
+1. add Marker로 만들고, 파라미터는 User, Company 둘다 받는 방법도 가능.
+   공통의 value가 있기에 가능.
+
+그런데 완벽한 방법은 아님! 왜?
+
+User, Company 말고 다른 객체를 만든다면? 각각 다 import하고, 동시에 | 도배를 해야 함.
+
+그래서 진짜 해결 방법은?
+
+```tsx
+// Instructions to every other class
+// on how they can be an argument to 'addMarker'
+interface Mappable {
+    location: {
+        lat: number;
+        lng: number;
+    };
+}
+
+export class CustomMap {
+    private googleMap: google.maps.Map;
+
+...
+
+    addMarker(mappable: Mappable): void {
+        new google.maps.Marker({
+            map: this.googleMap,
+            position: {
+                lat: mappable.location.lat,
+                lng: mappable.location.lng
+            }
+        });
+    }
+}
+```
+
+addMarker에 들어가기 위한 direction을 작성해야 함! 그것이 **interface**.
+
+gateKeeper of method!
+
+interface Mappable를 정의하는 것.
+
+Reuse성도 높음!
+
+```tsx
+customMap.addMarker(user)
+customMap.addMarker(company)
+```
+
+user랑 company가 Mappable interface에 fit하다는 것을 알아내기 때문에 아무런 에러가 없음.
+
+```tsx
+export class User implements Mappable {
+    name: string;
+    location: {
+        lat: number;
+        lng: number;
+    };
+```
+
+implements로 User 같은 class가 interface인 Mappable의 조건에 맞도록 도와줌!!
